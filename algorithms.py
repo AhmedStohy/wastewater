@@ -35,6 +35,13 @@ def pso(testdata, test_seq_len, model, arg, zongdan_target, model_path=None, tes
     for i in range(testdata.__len__()):
 
         print('progress: {} / {}'.format(i, testdata.__len__()))
+
+        if testdata[i, 0, arg.liuliangInd] < 5:
+            opt_result.append(np.zeros([solu_space_dim]))
+            opt_output.append(np.ones([arg.label_num]) * -1)
+            output_delay.append([-1])
+            continue
+
         particle_num = 10
         bingcusuan_ind = 7
         opt_ind = [bingcusuan_ind]  ### 需要优化的变量在输入指标中的列号，从0开始
@@ -48,12 +55,6 @@ def pso(testdata, test_seq_len, model, arg, zongdan_target, model_path=None, tes
         solu_space_dim = opt_ind.__len__()
         solu_low = 5 ### 每一个待寻优的变量的下界，对应opt_ind列表
         solu_high = 30 ### 上界
-
-        if testdata[i, 0, arg.liuliangInd] < 5:
-            opt_result.append(np.zeros([solu_space_dim]))
-            opt_output.append(np.ones([arg.label_num]) * -1)
-            output_delay.append([-1])
-            continue
 
         particles = np.random.uniform(solu_low, solu_high, [particle_num, solu_space_dim])
         velocities = np.ones([particle_num, solu_space_dim], np.float32) * -1

@@ -1,0 +1,26 @@
+### result figures
+*.png
+
+### data files
+*.csv
+*.txt
+*.xls
+*.xlsx
+
+### checkpoint files
+mlp/
+shlnn/
+rnn/
+cnn/
+
+### test files
+test.py
+
+### cache files
+*.pyc
+.idea/
+.DS_Store
+__pycache__/
+
+### special cases
+!data/20200406data_0_ok.txt
