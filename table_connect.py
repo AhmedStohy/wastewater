@@ -2,7 +2,7 @@ import csv
 import numpy as np
 import time
 import os, sys
-import data_pprc_191219
+import data_prep_191219
 import data_utils
 import data_prep_200402
 import data_prep_200406
@@ -152,7 +152,7 @@ if __name__ == '__main__':
 
     ### 20200406 批次
     if file_ind == 2:
-        all_data = data_pprc_191219.add_feature_col(all_data, ['T'], feat_name_lst, label_lst)
+        all_data = data_prep_191219.add_feature_col(all_data, ['T'], feat_name_lst, label_lst)
 
 
     ### 去除缺失值，必须在字段顺序调整前
