@@ -250,12 +250,15 @@ if arg.istrain:
         os.mkdir('res')
     with open('res/rnn_res.txt', 'a') as fa:
         print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())), file=fa)
+        for k, v in arg.values().items():
+            print('{} : {}'.format(k, v), file=fa)
         print('tenfold_train_mse:{} tenfold_train_mer:{} tenfold_train_ratio:{}'.format(
             np.mean(tenfold_train_mse, axis=0), np.mean(tenfold_train_mer, axis=0),
             np.mean(tenfold_train_ratio, axis=0)), file=fa)
         print('tenfold_val_mse:{} tenfold_val_mer:{} tenfold_val_ratio:{}'.format(np.mean(tenfold_val_mse, axis=0),
                                 np.mean(tenfold_val_mer, axis=0), np.mean(tenfold_val_ratio, axis=0)), file=fa)
         print('mean_time_cost:{}'.format(np.array(tenfold_time).mean()), file=fa)
+        print('\n', file=fa)
 
 else:
     tenfold_ratio = []
