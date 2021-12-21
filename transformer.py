@@ -5,6 +5,8 @@ import sys
 import tensorflow as tf
 import numpy as np
 
+from tensorflow.contrib import rnn, layers
+
 def normalize(inputs,
               epsilon = 1e-8,
               scope="ln",
@@ -44,58 +46,7 @@ def embedding(inputs,
               reuse=tf.AUTO_REUSE,
               ptr_embeddings=None,
               padding_index=-1):
-    '''Embeds a given tensor.
-    Args:
-      inputs: A `Tensor` with type `int32` or `int64` containing the ids
-         to be looked up in `lookup table`.
-      vocab_size: An int. Vocabulary size.
-      num_units: An int. Number of embedding hidden units.
-      zero_pad: A boolean. If True, all the values of the fist row (id 0)
-        should be constant zeros.
-      scale: A boolean. If True. the outputs is multiplied by sqrt num_units.
-      scope: Optional scope for `variable_scope`.
-      reuse: Boolean, whether to reuse the weights of a previous layer
-        by the same name.
-    Returns:
-      A `Tensor` with one more rank than inputs's. The last dimensionality
-        should be `num_units`.
 
-    For example,
-
-    ```
-    import tensorflow as tf
-
-    inputs = tf.to_int32(tf.reshape(tf.range(2*3), (2, 3)))
-    outputs = embedding(inputs, 6, 2, zero_pad=True)
-    with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
-        print sess.run(outputs)
-    >>
-    [[[ 0.          0.        ]
-      [ 0.09754146  0.67385566]
-      [ 0.37864095 -0.35689294]]
-     [[-1.01329422 -1.09939694]
-      [ 0.7521342   0.38203377]
-      [-0.04973143 -0.06210355]]]
-    ```
-
-    ```
-    import tensorflow as tf
-
-    inputs = tf.to_int32(tf.reshape(tf.range(2*3), (2, 3)))
-    outputs = embedding(inputs, 6, 2, zero_pad=False)
-    with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
-        print sess.run(outputs)
-    >>
-    [[[-0.19172323 -0.39159766]
-      [-0.43212751 -0.66207761]
-      [ 1.03452027 -0.26704335]]
-     [[-0.11634696 -0.35983452]
-      [ 0.50208133  0.53509563]
-      [ 1.22204471 -0.96587461]]]
-    ```
-    '''
     with tf.variable_scope(scope, reuse=reuse):
         if ptr_embeddings is not None:
             ptr_embeddings = tf.convert_to_tensor(ptr_embeddings)
@@ -120,7 +71,7 @@ def embedding(inputs,
         outputs = tf.nn.embedding_lookup(lookup_table, inputs)
 
         if outputs.get_shape().as_list()[-1] != num_units:
-            outputs = tf.layers.dense(outputs, num_units, tf.nn.relu)
+            outputs = tf.layers.dense(outputs, num_units, tf.nn.sigmoid)
 
         if scale:
             outputs = outputs * (num_units ** 0.5)
@@ -164,14 +115,14 @@ def multihead_attention(key_emb,
 
         ### 输入embedding reshape 成 num_units 维
         if keys.get_shape().as_list()[-1] != num_units:
-            keys = tf.layers.dense(keys, num_units, activation=tf.nn.relu)
+            keys = tf.layers.dense(keys, num_units, activation=tf.nn.sigmoid)
         if queries.get_shape().as_list()[-1] != num_units:
-            queries = tf.layers.dense(queries, num_units, activation=tf.nn.relu)
+            queries = tf.layers.dense(queries, num_units, activation=tf.nn.sigmoid)
 
         # Linear projections
-        Q = tf.layers.dense(queries, num_units, activation=tf.nn.relu)  # (N, T_q, C)
-        K = tf.layers.dense(keys, num_units, activation=tf.nn.relu)  # (N, T_k, C)
-        V = tf.layers.dense(keys, num_units, activation=tf.nn.relu)  # (N, T_k, C)
+        Q = tf.layers.dense(queries, num_units, activation=tf.nn.sigmoid)  # (N, T_q, C)
+        K = tf.layers.dense(keys, num_units, activation=tf.nn.sigmoid)  # (N, T_k, C)
+        V = tf.layers.dense(keys, num_units, activation=tf.nn.sigmoid)  # (N, T_k, C)
 
         # Split and concat
         Q_ = tf.concat(tf.split(Q, num_heads, axis=2), axis=0)  # (h*N, T_q, C/h)
@@ -269,7 +220,7 @@ def feedforward(inputs,
         outputs = inputs
         for hid_units in num_units[:-1]:
             params = {"inputs": outputs, "filters": hid_units, "kernel_size": 1,
-                                "activation": tf.nn.relu, "use_bias": True}
+                                "activation": tf.nn.sigmoid, "use_bias": True}
             outputs_prev = outputs
             outputs = tf.layers.conv1d(**params)
             if residual and layer_residual:
@@ -294,208 +245,139 @@ def feedforward(inputs,
     return outputs
 
 
-def label_smoothing(inputs, epsilon=0.1):
-    '''Applies label smoothing. See https://arxiv.org/abs/1512.00567.
-
-    Args:
-      inputs: A 3d tensor with shape of [N, T, V], where V is the number of vocabulary.
-      epsilon: Smoothing rate.
-
-    For example,
-
-    ```
-    import tensorflow as tf
-    inputs = tf.convert_to_tensor([[[0, 0, 1],
-       [0, 1, 0],
-       [1, 0, 0]],
-      [[1, 0, 0],
-       [1, 0, 0],
-       [0, 1, 0]]], tf.float32)
-
-    outputs = label_smoothing(inputs)
-
-    with tf.Session() as sess:
-        print(sess.run([outputs]))
-
-    >>
-    [array([[[ 0.03333334,  0.03333334,  0.93333334],
-        [ 0.03333334,  0.93333334,  0.03333334],
-        [ 0.93333334,  0.03333334,  0.03333334]],
-       [[ 0.93333334,  0.03333334,  0.03333334],
-        [ 0.93333334,  0.03333334,  0.03333334],
-        [ 0.03333334,  0.93333334,  0.03333334]]], dtype=float32)]
-    ```
-    '''
-    K = inputs.get_shape().as_list()[-1]  # number of channels
-    return ((1 - epsilon) * inputs) + (epsilon / K)
-
-
 def gelu(x):
     cdf = 0.5 * (1.0 + tf.tanh(
         (tf.sqrt(2 / np.pi) * (x + 0.044715 * tf.pow(x, 3)))))
     return x * cdf
 
-class Graph():
-    def __init__(self, arg, embeddings=None):
+
+class Transformer():
+    def __init__(self, args):
         tf.reset_default_graph()
-        self.is_training = arg.is_training
-        self.use_pretrain = arg.use_pretrain
-        self.hidden_units = arg.hidden_units
-        self.vocab_size_path = arg.vocab_size_path
-        self.vocab_size_pos = arg.vocab_size_pos
-        self.num_heads = arg.num_heads
-        self.num_blocks = arg.num_blocks
-        self.max_length = arg.max_length
-        self.lr = arg.lr
-        self.dropout_rate = arg.dropout_rate
-        self.ptr_embeddings = embeddings
-        self.padding_index_path = arg.padding_index_path
-        self.padding_index_pos = arg.padding_index_pos
-        self.model_select = arg.model_select
-        self.class_num = arg.class_num
-        self.stat_hid_units = arg.stat_hid_units
-        self.stat_dims = arg.stat_dims
-        self.SE_select = arg.SE_select
+        with tf.variable_scope('input'):
+            if args.is_variable_len:
+                self.x = tf.placeholder(dtype=tf.float32, shape=[None, args.seq_max_len+1, args.feat_num])  ### 注
+            else:
+                self.x = tf.placeholder(dtype=tf.float32, shape=[None, args.act_seq_num+1, args.feat_num])  ### 注
+            if args.auto_regressive:
+                self.y = tf.placeholder(dtype=tf.float32, shape=[None, args.feat_num])
+                self.lw = tf.placeholder(dtype=tf.float32, shape=[args.feat_num])
+            else:
+                self.y = tf.placeholder(dtype=tf.float32, shape=[None, args.label_num])
+                self.lw = tf.placeholder(dtype=tf.float32, shape=[args.label_num])
+            self.seq_lens = tf.placeholder(dtype=tf.int32, shape=[None])
 
-        # input placeholder
-        self.x_path = tf.placeholder(tf.int32, shape=(None, None))
-        self.x_pos = tf.placeholder(tf.int32, shape=(None, None))
-        self.x_stat = tf.placeholder(tf.float32, shape=(None, self.stat_dims))
-        self.y = tf.placeholder(tf.int32, shape=(None,))
+            # truncate path text length
+            if self.x.get_shape()[-1] > args.pos_max_length:
+                self.x = tf.slice(self.x, [0, 0, 0], [args.batch_size, args.pos_max_length, args.feat_num])
+            else:
+                self.x = self.x[:, :args.pos_max_length] # ???
 
-        # truncate path text length
-        if self.x_path.get_shape()[-1] > self.max_length:
-            self.x_path = tf.slice(self.x_path, [0, 0], [arg.batch_size, self.max_length])
-            self.x_pos = tf.slice(self.x_pos, [0, 0], [arg.batch_size, self.max_length])
-        else:
-            self.x_path = self.x_path[:, :self.max_length]
-            self.x_pos = self.x_pos[:, :self.max_length]
+            input_x = self.x
+            if input_x.get_shape()[-1] != args.d_model:
+                input_x = tf.layers.dense(input_x, args.d_model, activation=tf.nn.sigmoid, name='transform')
+
+            ### postition embedding
+            h = input_x + embedding(
+                tf.tile(tf.expand_dims(tf.range(tf.shape(input_x)[1]), 0), [tf.shape(input_x)[0], 1]),
+                vocab_size=args.pos_max_length, num_units=args.d_model, zero_pad=False, scale=False,
+                scope="position_emb")
+
+            ## Dropout
+            h = tf.layers.dropout(h, rate=1 - args.trm_keep_prop,
+                                         training=tf.convert_to_tensor(args.istrain))
 
         # Encoder
         with tf.variable_scope("encoder"):
 
-            # embedding
-            if self.use_pretrain and self.is_training:
-                if self.ptr_embeddings is None:
-                    raise ValueError('Pretrain embeddings are None')
-                self.enc_emb_path = embedding(self.x_path, vocab_size=self.vocab_size_path, num_units=self.hidden_units,
-                                            scale=True, scope="embedding_path", ptr_embeddings=self.ptr_embeddings)
-            else:
-                self.enc_emb_path = embedding(self.x_path, vocab_size=self.vocab_size_path, num_units=self.hidden_units,
-                                            scale=True, scope="embedding_path", padding_index=self.padding_index_path)
-
-            self.enc_emb_pos = embedding(self.x_pos, vocab_size=self.vocab_size_pos, num_units=self.hidden_units,
-                                            scale=True, scope="embedding_pos", padding_index=self.padding_index_pos)
-
-            ### postition embedding
-            self.enc_path = self.enc_emb_path + embedding(
-                tf.tile(tf.expand_dims(tf.range(tf.shape(self.x_path)[1]), 0), [tf.shape(self.x_path)[0], 1]),
-                vocab_size=self.max_length, num_units=self.hidden_units, zero_pad=False, scale=False,
-                scope="embedding_position")
-
-            self.enc_pos = self.enc_emb_pos + embedding(
-                tf.tile(tf.expand_dims(tf.range(tf.shape(self.x_pos)[1]), 0), [tf.shape(self.x_pos)[0], 1]),
-                vocab_size=self.max_length, num_units=self.hidden_units, zero_pad=False, scale=False,
-                scope="embedding_position")
-
-            if self.model_select == 'bert':
-                self.enc = self.enc_path
-            elif self.model_select in ['bertSIE', 'bertSIE_stat', 'stat']:
-                self.enc = self.enc_path + self.enc_pos
-            else:
-                print("Not implemented error: arg.model_select only allows 'bert' or 'bertSIE' or 'bertSIE_stat'")
-                sys.exit(1)
-
-            ## Dropout
-            self.enc = tf.layers.dropout(self.enc,
-                                         rate=self.dropout_rate,
-                                         training=tf.convert_to_tensor(self.is_training))
-
             ## Blocks
             self.enc_attns = []
-            for i in range(self.num_blocks):
-                with tf.variable_scope("num_blocks_{}".format(i)):
+            for block_ind in range(args.enc_block_num):
+                with tf.variable_scope("block_{}".format(block_ind)):
                     ### Multihead Attention
-                    self.enc = multihead_attention(key_emb=self.enc_emb_path,
-                                                   que_emb=self.enc_emb_path,
-                                                   queries=self.enc,
-                                                   keys=self.enc,
-                                                   num_units=self.hidden_units,
-                                                   num_heads=self.num_heads,
-                                                   dropout_rate=self.dropout_rate,
-                                                   is_training=self.is_training,
-                                                   causality=False,
-                                                   scope='self_attention',
-                                                   save_attns_for_visualization=self.enc_attns)
+                    h = multihead_attention(key_emb=self.x,
+                                           que_emb=self.x,
+                                           queries=h,
+                                           keys=h,
+                                           num_units=args.d_model,
+                                           num_heads=args.trm_head_num,
+                                           dropout_rate=1-args.trm_keep_prop,
+                                           is_training=args.istrain,
+                                           causality=False,
+                                           scope='self_attention',
+                                           save_attns_for_visualization=self.enc_attns)
 
                     ### Feed Forward
-                    self.enc = feedforward(self.enc, num_units=[4 * self.hidden_units, self.hidden_units], scope='output')
+                    h = feedforward(h, num_units=[4 * args.d_model, args.d_model], scope='ffn')
 
             self.enc_attns = tf.convert_to_tensor(self.enc_attns)
 
         with tf.variable_scope("pooler"):
             # We "pool" the model by simply taking the hidden state corresponding
             # to the first token. We assume that this has been pre-trained
-            sentence_cls = tf.squeeze(self.enc[:, 0:1, :], axis=1)
-            sentence_first = tf.squeeze(self.enc[:, 1:2, :], axis=1)
-            sentence_sum = tf.reduce_sum(self.enc[:, 1:, :], axis=1)
-            sentence_mean = tf.reduce_mean(self.enc[:, 1:, :], axis=1)
-            sentence_max = tf.reduce_max(self.enc[:, 1:, :], axis=1)
-            if self.SE_select == 'cls':
+            sentence_cls = tf.squeeze(h[:, 0:1, :], axis=1)
+            sentence_first = tf.squeeze(h[:, 1:2, :], axis=1)
+            sentence_sum = tf.reduce_sum(h[:, 1:, :], axis=1)
+            sentence_mean = tf.reduce_mean(h[:, 1:, :], axis=1)
+            sentence_max = tf.reduce_max(h[:, 1:, :], axis=1)
+            sentence_conv = tf.contrib.layers.conv1d(h[:, 1:, :], h.shape.as_list()[2],
+                                                     kernel_size=h.shape.as_list()[1]-1,
+                                                     activation_fn=tf.nn.relu, padding='valid')
+            sentence_conv = tf.squeeze(sentence_conv, [1])
+            if args.SE_select == 'cls':
                 encode_vector = sentence_cls
-            elif self.SE_select == 'first':
+            elif args.SE_select == 'first':
                 encode_vector = sentence_first
-            elif self.SE_select == 'sum':
+            elif args.SE_select == 'sum':
                 encode_vector = sentence_sum
-            elif self.SE_select == 'mean':
+            elif args.SE_select == 'mean':
                 encode_vector = sentence_mean
-            elif self.SE_select == 'max':
+            elif args.SE_select == 'max':
                 encode_vector = sentence_max
+            elif args.SE_select == 'conv':
+                encode_vector = sentence_conv
             else:
-                print("Not implemented error: arg.model_select only allows ['cls', 'first', 'sum', 'mean', 'max']")
+                print("Not implemented error: args.model_select only allows ['cls', 'first', 'sum', 'mean', 'max']")
                 sys.exit(1)
-            self.pooled_output = tf.layers.dense(
+            pooled_output = tf.layers.dense(
                 encode_vector,
-                arg.hidden_units,
+                args.d_model,
                 activation=tf.tanh,
                 kernel_initializer=tf.truncated_normal_initializer(stddev=0.2))
 
-        if self.model_select in ['bertSIE_stat', 'stat']:
-            with tf.variable_scope("stat_encoder"):
-                self.stat_feats = feedforward(tf.expand_dims(self.x_stat, axis=1), self.stat_hid_units, scope='feed_foward', residual=True)
-                self.stat_feats = tf.squeeze(self.stat_feats, axis=1)
+        with tf.variable_scope('predictor'):
+            for pred_layer_ind in range(args.trm_pred_layer_num):
+                with tf.variable_scope('ffn_{}'.format(pred_layer_ind)):
+                    pooled_output = tf.layers.dense(pooled_output, args.d_model, activation=tf.nn.sigmoid,
+                                                    bias_initializer=tf.constant_initializer(0.1))
+        with tf.variable_scope('final_output'):
+            if args.auto_regressive:
+                self.preds = tf.layers.dense(pooled_output, args.feat_num, activation=None,
+                                             bias_initializer=tf.constant_initializer(0.1))
+                if args.ensemble_naive:
+                    self.naive_preds = self.x[:, -1, :]
+            else:
+                self.preds = tf.layers.dense(pooled_output, args.label_num, activation=None,
+                                             bias_initializer=tf.constant_initializer(0.1))
+                if args.ensemble_naive:
+                    self.naive_preds = tf.tile(self.x[:, -1, :], (1, args.label_num)) # 有问题，不过用不上了
+            if args.ensemble_naive:
+                self.alpha = tf.Variable(0.5, name='ensemble_w')
+                self.preds = self.alpha * self.preds + (1 - self.alpha) * self.naive_preds
 
-                # self.stat_feats = self.x_stat
+        self.model_mer = tf.abs((self.preds - self.y) / self.y)
 
-            if self.model_select == 'bertSIE_stat':
-                self.final_output = tf.concat([self.pooled_output, self.stat_feats], axis=-1)
-            elif self.model_select == 'stat':
-                self.final_output = self.stat_feats
-        else:
-            self.final_output = self.pooled_output
-
-        # Final linear projection
-        self.logits = tf.layers.dense(self.final_output, self.class_num)
-        self.probs = tf.nn.softmax(self.logits)
-        self.preds = tf.to_int32(tf.argmax(self.logits, axis=-1))
-        # self.istarget = tf.to_float(tf.not_equal(self.y, self.padding_index_out)) ### shape=[batch_size, batch_max+length]
-        self.batch_correct_pred = tf.to_float(tf.equal(self.preds, self.y))
-        self.batch_total_acc = tf.reduce_sum(self.batch_correct_pred)
-        self.batch_TP = tf.reduce_sum(self.batch_correct_pred * tf.to_float(self.y))
-        self.batch_TPFN = tf.to_float(tf.reduce_sum(self.y))
-        self.batch_TPFP = tf.to_float(tf.reduce_sum(self.preds))
-        # tf.summary.scalar('acc', tf.reduce_mean(self.batch_total_acc))
-
-        # Loss
-        self.y_smoothed = label_smoothing(tf.one_hot(self.y, depth=self.class_num))
-        self.loss = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.logits, labels=self.y_smoothed)  ### shape=[batch_size, batch_max+length]
-        self.batch_total_loss = tf.reduce_sum(self.loss)
+        # tv = tf.trainable_variables()
+        # reg_loss = 0.001 * tf.reduce_sum([tf.nn.l2_loss(v) for v in tv ])
+        self.model_mse = tf.square(self.preds - self.y)  # 平均平方误差
+        self.model_weighted_mse = tf.reduce_mean(self.lw * self.model_mse)
+        self.model_weighted_mer = tf.reduce_mean(self.lw * self.model_mer)  # 平均误差率
+        # self.model_mer = tf.reduce_mean(tf.abs((self.preds - self.y) / self.y)) # 平均误差率
+        # self.loss = tf.reduce_mean(tf.square((self.output - self.y) / self.y), axis=0)
+        # self.loss = self.model_weighted_mse
+        self.loss = self.model_weighted_mer
 
         # Training Scheme
-        self.global_step = tf.Variable(0, name='global_step', trainable=False)
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.lr, beta1=0.9, beta2=0.98, epsilon=1e-8)
-        self.train_op = self.optimizer.minimize(self.batch_total_loss, global_step=self.global_step)
-
-        # # Summary
-        # tf.summary.scalar('mean_loss', self.batch_total_loss)
-        # self.merged = tf.summary.merge_all()
+        global_step = tf.Variable(0, name='global_step', trainable=False)
+        optimizer = tf.train.AdamOptimizer(learning_rate=args.learning_rate, beta1=0.9, beta2=0.98, epsilon=1e-8)
+        self.train_step = optimizer.minimize(self.loss, global_step=global_step)

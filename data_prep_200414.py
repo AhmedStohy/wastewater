@@ -5,7 +5,7 @@ import time
 import csv
 
 import data_utils
-import data_pprc_191219
+import data_prep_191219
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import IsolationForest
@@ -26,10 +26,10 @@ def extract_tables():
     # start_date = '2016-12-7 6:0:0' ### 本来应是 2016-12-7 8:43:42
     # end_date = '2020-4-14 0:0:0'
 
-    start_date = '2018-03-01 00:00:00'
-    end_date = '2018-09-01 00:00:00'
+    start_date = '2018-01-01 00:00:00'
+    end_date = '2019-01-01 00:00:00'
 
-    interval = 2 ### 间隔为2h
+    interval = 1 ### 间隔为h
 
     # table_data = []
     # date2ind = {}
@@ -43,7 +43,7 @@ def extract_tables():
     maxCount = -1
     maxIncre = -1
     # for ind, incre in enumerate(range(0, 60 * 60 * interval, 60)):
-    incre = 600
+    incre = 600 # 时间戳整体向后偏移600s
     # incre = 0
     cur = start + incre
 
@@ -54,11 +54,11 @@ def extract_tables():
     while cur < end:
         tmpRow = ['NULL'] * (1 + feature_lst.__len__())
         tmpRow[0] = str(cur)
-        date2ind[cur] = date_ind
+        date2ind[cur] = date_ind # data2ind[d]为日期d在table_data中的行号
         date_ind += 1
         table_data.append(tmpRow)
 
-        cur += (60 * 60) * interval
+        cur += int((60 * 60) * interval)
 
     oriCount = table_data.__len__()
     curCount = oriCount
@@ -128,7 +128,7 @@ def extract_tables():
     # if oriCount - curCount > maxCount:
     #     maxCount = oriCount - curCount
     #     maxIncre = incre
-    print(oriCount-curCount, incre)
+    print('缺失值比例: {}/{}'.format(curCount, oriCount), '时间戳偏移:', incre)
     #
     # print(maxCount, maxIncre)
 
@@ -181,15 +181,24 @@ def extract_tables():
 
     # table_data = data_pprc_191219.truncate_data(table_data, '2018-03-01 00:00:00', '2018-09-01 00:00:00')
 
+    ### 平均插值
     for ind in range(1, feature_lst.__len__()+1):
         data_utils.interpolation_bot(ind, table_data)
+
     table_data_arr = np.array(table_data)
+    has_outlier = np.array([False] * (feature_lst.__len__() + 1), np.bool) # 某维是否有异常值的标志；第一维datetime
 
     ### 去掉先验异常值
     indicator = 1 ### COD
     target_data = np.array(table_data_arr[:, indicator], dtype=np.float32)
     outlier_inds = np.squeeze(np.argwhere(target_data < 10)) ### 去掉小于10的
     table_data_arr[outlier_inds, indicator] = 'NULL'
+    has_outlier[indicator] = True
+    indicator = 3  ### TP
+    target_data = np.array(table_data_arr[:, indicator], dtype=np.float32)
+    outlier_inds = np.squeeze(np.argwhere(target_data < 0.1))  ### 去掉小于0.1的
+    table_data_arr[outlier_inds, indicator] = 'NULL'
+    has_outlier[indicator] = True
 
     # ### 1.5σ 检测各维度异常值，每维度单独检测
     # # for ind in range(1, feature_lst.__len__() + 1):
@@ -200,53 +209,73 @@ def extract_tables():
     #     outlier_inds = np.r_[np.argwhere(target_data < miu - 1.5 * sigma), np.argwhere(target_data > miu + 1.5 * sigma)]
     #     outlier_inds = np.reshape(outlier_inds, [-1])
     #     table_data_arr[outlier_inds, ind] = 'NULL'
+    #     has_outlier[ind] = True
     #
     # # ### 每指标单独做孤立树
     # # for ind in range(1, feature_lst.__len__() + 1):
     # #     clf = IsolationForest(random_state=1, contamination=0.02)
-    # #     # preds = clf.fit_predict(np.array(all_data)[:, 1:feature_lst.__len__()+1]) ## -------注 +1 datetime
-    # #     # preds = clf.fit_predict(np.array(all_data)[:, -label_lst.__len__():]) ## -------注
+    # #     # preds = clf.fit_predict(np.array(all_data)[:, 1:1+feature_lst.__len__()]) ## -------注 +1 datetime
     # #     preds = clf.fit_predict(table_data_arr[:, ind:ind+1])  ## -------注
     # #     outlier_inds = np.squeeze(np.argwhere(preds == -1))
     # #     table_data_arr[outlier_inds, ind] = 'NULL'
+    # #     has_outlier[ind] = True
 
     table_data = table_data_arr.tolist()
     # for ind in range(1, feature_lst.__len__() + 1): ### 注
-    for ind in [1]:
-        data_utils.interpolation_bot(ind, table_data)
+    for ind in range(1, 1 + feature_lst.__len__()):
+        if has_outlier[ind]:
+            data_utils.interpolation_bot(ind, table_data)
     table_data_arr = np.array(table_data)
 
-    # ### 标准化
-    # # table_data_arr = np.array(table_data_arr, np.float32)
-    # ss = StandardScaler()
-    # # ss.scale_ = np.std(table_data_arr[:, 1:], ddof=1)
-    # std_all_data = ss.fit_transform(np.array(table_data_arr[:, 1:], np.float32))
-    # table_data_arr[:, 1:] = np.array(std_all_data, np.str)
-    # # table_data_arr = np.array(table_data_arr, np.str)
-    # table_data = table_data_arr.tolist()
+    ### 标准化
+    do_standardize = False
+    if do_standardize:
+        # table_data_arr = np.array(table_data_arr, np.float32)
+        ss = StandardScaler()
+        # ss.scale_ = np.std(table_data_arr[:, 1:], ddof=1)
+        std_all_data = ss.fit_transform(np.array(table_data_arr[:, 1:], np.float32))
+        table_data_arr[:, 1:] = np.array(std_all_data, np.str)
+        # table_data_arr = np.array(table_data_arr, np.str)
+        table_data = table_data_arr.tolist()
 
-    input_step = 12
-    pred_step = 3
-    # indicator = [1, 2, 3] ### COD NH3N TP
-    indicator = [3] ### COD NH3N TP
-    target_indicator = 3 ### 单指标预测单指标，与indicator一致
+    input_step = 24
+    pred_step = 96
+    is_single_var = False # True: univar   False: multivar
+    indicators = [1, 2, 3] # COD NH3N TP
+    # indicators = [2] # COD NH3N TP
+    ind_names = {1:'COD', 2:'NH3N', 3:'TP'}
+    for target_ind in indicators:
+        if is_single_var:
+            indicator = [target_ind] #待遇测指标
+        else:
+            indicator = indicators
 
-    all_data = []
-    for row in range(table_data_arr.shape[0]-input_step-pred_step):
-        # tmpdata = np.reshape(table_data_arr[row : row+input_step, 1:], [-1])
-        tmpdata = np.reshape(table_data_arr[row : row+input_step, target_indicator], [-1])
-        for ind in indicator:
-            tmpdata = np.r_[tmpdata, table_data_arr[row+input_step : row+input_step+pred_step, ind]]
-        all_data.append(tmpdata)
+        all_data = []
+        for row in range(table_data_arr.shape[0]-input_step-pred_step+1):
+            tmpdata = np.reshape(table_data_arr[row : row+input_step, indicator], [-1])
+            tmplabel = np.reshape(table_data_arr[row+input_step : row+input_step+pred_step, indicator], [-1])
+            tmpdata = np.r_[tmpdata, tmplabel]
+            # for ind in indicator:
+            #     tmpdata = np.r_[tmpdata, table_data_arr[row+input_step : row+input_step+pred_step, ind]]
+            all_data.append(tmpdata)
 
-    all_data = np.array(all_data)
-    save_file = 'data/20200414data_ok.txt'
-    np.savetxt(save_file, all_data, fmt='%s', delimiter='\t')
+        all_data = np.array(all_data)
+        if is_single_var:
+            save_file = 'data/20200414data{}_H_{}seqlen_{}predlen_ok.txt'.format(ind_names[target_ind],
+                                                                                 input_step, pred_step)
+        else:
+            save_file = 'data/20200414data_H_{}seqlen_{}predlen_ok.txt'.format(input_step, pred_step)
+        if do_standardize:
+            save_file = save_file[:save_file.rfind('_')] + '_std_ok.txt'
+        np.savetxt(save_file, all_data, fmt='%s', delimiter='\t')
+
+        if not is_single_var:
+            break
 
 
     # ### 存入txt文件
-    # with open('data/20200414data.txt', 'w') as fw:  # ---------------------注
-    #     first_r = ['datetime'] + feature_lst + label_lst * 3
+    # with open('data/20200414data_H.txt', 'w') as fw:  # ---------------------注
+    #     first_r = ['datetime'] + feature_lst
     #     first_r = '\t'.join(first_r) + '\n'
     #     text = [first_r]
     #     for data in table_data:
@@ -254,7 +283,7 @@ def extract_tables():
     #
     #     fw.writelines(text)
     #
-    # save_file = 'data/进水历史数据/jinshuishuju.csv'
+    # save_file = 'data/进水历史数据/jinshuishuju_H_平均插值_去除异常COD&TP.csv'
     #
     # for i in range(table_data.__len__()):
     #     time_abs = int(table_data[i][0])
@@ -265,7 +294,7 @@ def extract_tables():
     #
     # with open(save_file, 'w') as fw:
     #     csv_write = csv.writer(fw)
-    #     first_r = ['datetime'] + feature_lst + label_lst * 3
+    #     first_r = ['datetime'] + feature_lst
     #     csv_write.writerow(first_r)
     #     csv_write.writerows(table_data)
 

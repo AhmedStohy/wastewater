@@ -12,6 +12,10 @@ mlp/
 shlnn/
 rnn/
 cnn/
+res/
+figure/
+data/
+ckpt/
 
 ### test files
 test.py

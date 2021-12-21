@@ -18,9 +18,9 @@ def create_hparams():
         test_rate = 0.2, # 测试数据占总数据比例
         savedir = 'mlp/',  # 一定要这个格式，前面字母，最后'/'
 
-        time_increment = 24, # 注意输入输出时间间隔，单位为分
+        time_increment = 40, # 注意输入输出时间间隔，单位为分
         time_intv_per_sample = 1, # x min一条数据
-        last_equal_intv = 24, # 最后 x min的输入视为一样，0表示无
+        last_equal_intv = 0, # 最后 x min的输入视为一样，0表示无
         feat_num = 8, # 特征个数，注意
         label_num = 3, # 输出个数
 
@@ -29,7 +29,7 @@ def create_hparams():
         learning_rate = 0.0003,
         max_epoch = 1000,
         batch_size = 64,
-        istrain = True,
+        istrain = False,
         first_random = False,  # processed_data第一次做实验需要乱序，第二次开始False
         use_loss_weight = True,  # 是否启用动态loss weight
         display_step = 5,
@@ -78,7 +78,7 @@ testlabel = label[-test_num:]
 data = data[:-test_num]
 label = label[:-test_num]
 
-model = models.MLP(args)
+model = models.MLP_origin(args)
 
 if args.istrain:
 
@@ -246,7 +246,7 @@ else:
                 pred_num = pred.shape[0]
                 c = (t2 - t1) / pred_num
                 tenfold_predtc.append(c)
-                print('prediction time cost:{}'.format(c))
+                print('prediction time cost per instance:{}'.format(c))
 
                 ### 预测值 真实值存入文件
                 with open('{}_test_preds.csv'.format(args.savedir[:-1]), 'w') as fw: ### savedir 前面字母最后'/'

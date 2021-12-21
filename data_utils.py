@@ -318,7 +318,7 @@ def batch_generator(data, label, batch_size):
             yield data[inds], label[inds]
 
 
-def dataset_split(data, labels, pos_neg=None, train_percent=0.8, val_percent=0.1, test_percent=0.1):
+def datasmpet_split(data, labels, pos_neg=None, train_percent=0.8, val_percent=0.1, test_percent=0.1):
     num_samples = data.shape[0]
     ## 乱序
     inds = np.arange(num_samples)
