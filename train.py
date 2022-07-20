@@ -75,7 +75,7 @@ def create_hparams():
 
         learning_rate=0.0003,
         max_epoch=10000,
-        batch_size=64,
+        batch_size=16,
         early_stop=100,
 
         auto_regressive=False,  # 是否自回归地向后预测
