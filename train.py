@@ -19,9 +19,9 @@ os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
 def create_hparams():
     params = tf.contrib.training.HParams(
-        raw_data='data/20200406data_0.txt', # 原始数据文件，！！注意
+        raw_data='./data/20200406data_0.txt', # 原始数据文件，！！注意
         test_rate=0.2,  # 测试数据占总数据比例
-        savedir='ckpt/trm_200406x0varilen_1enc_64bs_first_nodrop_allInputPad', # 保存实验结果
+        savedir='./ckpt/trm_200406x0varilen_1enc_64bs_first_nodrop_allInputPad', # 保存实验结果
         model_select='transformer',
         number_of_runs=20, # 重复训练测试若干次
         get_test_res_by = 'max', # 取测试效果平均/最大值 ['mean', 'max']
