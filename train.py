@@ -85,7 +85,7 @@ def create_hparams():
         use_last_n_step=0, # 只取最后若干时间步的特征作为输入，只当>0时有效
         loss_function='mer', # ['mer', 'mse']
 
-        istrain=False,
+        istrain=True,
         display_step=5,
 
         is_pso=False,
