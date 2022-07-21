@@ -19,7 +19,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
 def create_hparams():
     params = tf.contrib.training.HParams(
-        raw_data='/kaggle/working/wastewater/data/20200406data_0_ok.txt', # 原始数据文件，！！注意
+        raw_data='/content/wastewater/data/20200406data_0_ok.txt', # 原始数据文件，！！注意
         test_rate=0.2,  # 测试数据占总数据比例
         savedir='./ckpt/trm_200406x0varilen_1enc_64bs_first_nodrop_allInputPad', # 保存实验结果
         model_select='transformer',
