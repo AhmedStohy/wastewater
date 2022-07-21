@@ -15,7 +15,7 @@ import optimization
 from data_utils import process_raw_data, tenfold_generator, batch_generator, process_raw_data_variable_len
 
 os.environ["CUDA_VISIBLE_DEVICES"] = '0'
-
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def create_hparams():
     params = tf.contrib.training.HParams(
